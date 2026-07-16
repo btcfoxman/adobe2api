@@ -128,6 +128,11 @@ class AdobeClient:
     submit_url = "https://firefly-3p.ff.adobe.io/v2/3p-images/generate-async"
     video_submit_url = "https://firefly-3p.ff.adobe.io/v2/3p-videos/generate-async"
     upload_url = "https://firefly-3p.ff.adobe.io/v2/storage/image"
+    storage_urls = {
+        "image": "https://firefly-3p.ff.adobe.io/v2/storage/image",
+        "audio": "https://firefly-3p.ff.adobe.io/v2/storage/audio",
+        "video": "https://firefly-3p.ff.adobe.io/v2/storage/video",
+    }
     entity_api_base = "https://firefly-entity.adobe.io/api/entities/"
     platform_cs_index_url = "https://platform-cs-edge.adobe.io/index"
     platform_cs_base = "https://platform-cs-va6.adobe.io/composite/component/path"
@@ -317,6 +322,12 @@ class AdobeClient:
             "sec-fetch-dest": "empty",
         }
 
+    def _firefly_browser_headers(self) -> dict:
+        headers = self._browser_headers()
+        headers["origin"] = "https://firefly.adobe.com"
+        headers["referer"] = "https://firefly.adobe.com/"
+        return headers
+
     def _submit_headers(self, token: str, prompt: str = "") -> dict:
         headers = self._browser_headers()
         headers.update(
@@ -344,6 +355,44 @@ class AdobeClient:
                 "Authorization": f"Bearer {token}",
                 "x-api-key": self.api_key,
                 "content-type": "application/json",
+                "accept": "*/*",
+            }
+        )
+        return headers
+
+    def _seedance_submit_headers(self, token: str) -> dict:
+        headers = self._firefly_browser_headers()
+        headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "x-api-key": self.api_key,
+                "content-type": "application/json",
+                "accept": "*/*",
+            }
+        )
+        arp_session_id = _arp_session_id_for_token(token) or _build_arp_session_id()
+        if arp_session_id:
+            headers["x-arp-session-id"] = arp_session_id
+        return headers
+
+    def _seedance_poll_headers(self, token: str) -> dict:
+        headers = self._firefly_browser_headers()
+        headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "x-api-key": self.api_key,
+                "accept": "*/*",
+            }
+        )
+        return headers
+
+    def _storage_headers(self, token: str, mime_type: str) -> dict:
+        headers = self._firefly_browser_headers()
+        headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "x-api-key": self.api_key,
+                "content-type": mime_type,
                 "accept": "*/*",
             }
         )
@@ -675,6 +724,51 @@ class AdobeClient:
             raise AdobeRequestError("upload image succeeded but no image id returned")
         return str(image_id)
 
+    def upload_storage_asset(
+        self,
+        token: str,
+        media_kind: str,
+        payload: bytes,
+        mime_type: str,
+    ) -> str:
+        kind = str(media_kind or "").strip().lower()
+        if kind not in self.storage_urls:
+            raise AdobeRequestError(f"unsupported storage asset kind: {media_kind}")
+        if not payload:
+            raise AdobeRequestError(f"{kind} is empty")
+
+        resp = self._post_bytes(
+            self.storage_urls[kind],
+            headers=self._storage_headers(token, mime_type or "application/octet-stream"),
+            payload=payload,
+        )
+
+        if resp.status_code in (401, 403):
+            raise AuthError("Token invalid or expired")
+        if resp.status_code != 200:
+            if resp.status_code in (429, 451) or resp.status_code >= 500:
+                raise UpstreamTemporaryError(
+                    f"upload {kind} failed: {resp.status_code} {resp.text[:300]}",
+                    status_code=resp.status_code,
+                    error_type="status",
+                )
+            raise AdobeRequestError(
+                f"upload {kind} failed: {resp.status_code} {resp.text[:300]}"
+            )
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise AdobeRequestError(f"upload {kind} failed: invalid response")
+
+        if kind == "image":
+            asset_id = (((data.get("images") or [{}])[0]) or {}).get("id")
+        else:
+            asset_id = (((data.get("assets") or [{}])[0]) or {}).get("id")
+        if not asset_id:
+            raise AdobeRequestError(f"upload {kind} succeeded but no asset id returned")
+        return str(asset_id)
+
     @staticmethod
     def _json_or_empty(resp) -> Any:
         if not str(getattr(resp, "text", "") or "").strip():
@@ -961,6 +1055,47 @@ class AdobeClient:
         if aspect_ratio == "16:9":
             return {"width": 1280, "height": 720}
         return {"width": 720, "height": 1280}
+
+    @staticmethod
+    def _seedance_video_size(aspect_ratio: str) -> dict:
+        ratio = str(aspect_ratio or "").strip()
+        return {
+            "16:9": {"width": 1280, "height": 720},
+            "9:16": {"width": 720, "height": 1280},
+            "4:3": {"width": 960, "height": 720},
+            "3:4": {"width": 720, "height": 960},
+            "1:1": {"width": 720, "height": 720},
+        }.get(ratio, {"width": 1280, "height": 720})
+
+    def build_seedance_video_payload(
+        self,
+        *,
+        prompt: str,
+        duration: int,
+        aspect_ratio: str,
+        model_version: str = "seedance_2.0_fast",
+        reference_blobs: Optional[list[dict]] = None,
+        negative_prompt: str = "",
+        generate_audio: bool = True,
+    ) -> dict:
+        return {
+            "modelId": "seedance",
+            "modelVersion": str(model_version or "seedance_2.0_fast"),
+            "size": self._seedance_video_size(aspect_ratio),
+            "seeds": [int(time.time()) % 999999],
+            "referenceBlobs": list(reference_blobs or []),
+            "prompt": str(prompt or ""),
+            "negativePrompt": negative_prompt
+            or "cartoon, vector art, & bad aesthetics & poor aesthetic",
+            "duration": int(duration),
+            "generateAudio": bool(generate_audio),
+            "generationMetadata": {
+                "module": "text2video",
+                "submodule": "ff-video-generate",
+            },
+            "generationSettings": {"aspectRatio": str(aspect_ratio or "16:9")},
+            "output": {"storeInputs": True},
+        }
 
     @staticmethod
     def _coerce_progress_percent(value: Any) -> Optional[float]:
@@ -1466,6 +1601,145 @@ class AdobeClient:
                         pass
                 raise AdobeRequestError("video generation timed out")
             time.sleep(3.0)
+
+    def generate_seedance_video(
+        self,
+        token: str,
+        payload: dict,
+        timeout: int = 900,
+        out_path: Optional[Path] = None,
+        poll_interval: float = 3.0,
+        progress_cb: Optional[Callable[[dict], None]] = None,
+    ) -> tuple[Optional[bytes], dict, dict]:
+        submit_resp = self._post_json(
+            self.video_submit_url,
+            headers=self._seedance_submit_headers(token),
+            payload=payload,
+        )
+        if submit_resp.status_code in (401, 403):
+            access_error = submit_resp.headers.get("x-access-error")
+            if access_error == "taste_exhausted":
+                raise QuotaExhaustedError("Adobe quota exhausted for this account")
+            raise AuthError("Token invalid or expired")
+        if submit_resp.status_code != 200:
+            if submit_resp.status_code in (429,) or submit_resp.status_code >= 500:
+                raise UpstreamTemporaryError(
+                    f"seedance submit failed: {submit_resp.status_code} {submit_resp.text[:300]}",
+                    status_code=submit_resp.status_code,
+                    error_type="status",
+                )
+            raise AdobeRequestError(
+                f"seedance submit failed: {submit_resp.status_code} {submit_resp.text[:300]}",
+                status_code=submit_resp.status_code,
+                error_type="submit",
+            )
+
+        try:
+            submit_data = submit_resp.json()
+        except Exception:
+            raise AdobeRequestError("seedance submit failed: invalid response")
+
+        poll_url = self._extract_result_link(submit_resp, submit_data)
+        if not poll_url:
+            raise AdobeRequestError("seedance submit succeeded but no poll url returned")
+        poll_url = self._normalize_video_poll_url(str(poll_url))
+        upstream_job_id = self._extract_job_id(poll_url)
+        if progress_cb:
+            try:
+                progress_cb(
+                    {
+                        "task_status": "IN_PROGRESS",
+                        "task_progress": 25.0,
+                        "upstream_job_id": upstream_job_id,
+                        "submit_response": submit_data,
+                    }
+                )
+            except Exception:
+                pass
+
+        latest: dict = {}
+        start = time.time()
+        while True:
+            poll_resp = self._get(
+                poll_url, headers=self._seedance_poll_headers(token), timeout=60
+            )
+            status_header = str(poll_resp.headers.get("x-task-status") or "").upper()
+            if poll_resp.status_code in (401, 403):
+                raise AuthError("Token invalid or expired")
+            if poll_resp.status_code != 200:
+                latest = self._json_or_empty(poll_resp)
+                if poll_resp.status_code == 451 or status_header == "FAILED":
+                    raise AdobeRequestError(
+                        f"seedance job failed: {latest or poll_resp.text[:300]}",
+                        status_code=poll_resp.status_code,
+                        error_type="generation_failed",
+                    )
+                if poll_resp.status_code in (429,) or poll_resp.status_code >= 500:
+                    raise UpstreamTemporaryError(
+                        f"seedance poll failed: {poll_resp.status_code} {poll_resp.text[:300]}",
+                        status_code=poll_resp.status_code,
+                        error_type="status",
+                    )
+                raise AdobeRequestError(
+                    f"seedance poll failed: {poll_resp.status_code} {poll_resp.text[:300]}",
+                    status_code=poll_resp.status_code,
+                    error_type="poll",
+                )
+
+            latest = poll_resp.json()
+            status_val = str(latest.get("status") or "").upper() or status_header
+            progress_val = self._extract_progress_percent(latest, poll_resp)
+            if progress_cb and self._is_in_progress_status(status_val):
+                try:
+                    progress_cb(
+                        {
+                            "task_status": "IN_PROGRESS",
+                            "task_progress": progress_val
+                            if progress_val is not None
+                            else 30.0,
+                            "upstream_job_id": upstream_job_id,
+                            "status_response": latest,
+                        }
+                    )
+                except Exception:
+                    pass
+
+            outputs = latest.get("outputs") or []
+            if outputs:
+                video_url = ((outputs[0] or {}).get("video") or {}).get("presignedUrl")
+                if not video_url:
+                    raise AdobeRequestError("seedance job finished without video url")
+                if out_path is not None:
+                    self._download_to_file(
+                        video_url,
+                        headers={"accept": "*/*"},
+                        out_path=out_path,
+                        timeout=120,
+                    )
+                    video_bytes = None
+                else:
+                    video_resp = self._get(video_url, headers={"accept": "*/*"}, timeout=120)
+                    video_resp.raise_for_status()
+                    video_bytes = video_resp.content
+                if progress_cb:
+                    try:
+                        progress_cb(
+                            {
+                                "task_status": "COMPLETED",
+                                "task_progress": 100.0,
+                                "upstream_job_id": upstream_job_id,
+                                "status_response": latest,
+                            }
+                        )
+                    except Exception:
+                        pass
+                return video_bytes, latest, submit_data
+
+            if status_val in {"FAILED", "CANCELLED", "ERROR"}:
+                raise AdobeRequestError(f"seedance job failed: {latest}")
+            if time.time() - start > timeout:
+                raise AdobeRequestError("seedance generation timed out")
+            time.sleep(max(1.0, float(poll_interval or 3.0)))
 
     def generate(
         self,

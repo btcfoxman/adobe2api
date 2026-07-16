@@ -4,3 +4,5 @@ config/config.json
 config/tokens.json
 config/refresh_profile.json
 tokens.json
+/logs/uvicorn.err.log
+/logs/uvicorn.out.log

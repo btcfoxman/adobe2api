@@ -78,6 +78,8 @@ Current supported model families are:
 - `firefly-veo31-ref-*` (video, reference-image mode)
 - `firefly-veo31-fast-*` (video)
 - `firefly-kling3-*` (video, Kling 3.0 with frame references)
+- `doubao-seedance-2-0-fast-260128` (standard async Seedance video API via Firefly, maps to `seedance_2.0_fast`)
+- `doubao-seedance-2-0-260128` (standard async Seedance video API via Firefly, maps to `seedance_2.0`)
 
 Nano Banana image models (`nano-banana-2`):
 
@@ -202,6 +204,61 @@ Kling 3.0 video models:
 - Examples:
   - `firefly-kling3-5s-16x9`
   - `firefly-kling3-15s-9x16`
+
+Seedance standard async video API:
+
+- Create: `POST /api/v3/contents/generations/tasks`
+- Query: `GET /api/v3/contents/generations/tasks/{task_id}`
+- Models: `doubao-seedance-2-0-fast-260128`, `doubao-seedance-2-0-260128`
+- Duration: `4` to `15` seconds
+- Ratio: `16:9` / `9:16` / `3:4` / `4:3` / `1:1`
+- Resolution: `720p`
+- Media links: up to 9 images, 1 video, and 3 audios
+- Default mode: omni reference (`generationType=3` / `mode=reference`)
+- First/end frame mode: pass `generationType=2` or `mode=i2v_first_last`; use 1 or 2 images, which are submitted as ordered Firefly `referenceBlobs` with `usage=frame`
+- Create response provider: `firefly`
+- Query responses omit `helper_task_id` and `provider`.
+- Optional S3 upload: enable `s3_enabled` and configure `s3_endpoint`, `s3_region`, `s3_bucket`, `s3_access_key`, `s3_secret_key`, `s3_prefix`, `s3_public_base_url`, `s3_force_path_style`, and `s3_acl` in the admin settings. When enabled, the returned `video_url` is the uploaded S3 public URL.
+
+Create example:
+
+```bash
+curl -X POST "http://127.0.0.1:6001/api/v3/contents/generations/tasks" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedance-2-0-fast-260128",
+    "prompt": "Create a product showcase video using @Image1 and the motion from @Video1.",
+    "duration": 8,
+    "ratio": "16:9",
+    "resolution": "720p",
+    "image_urls": ["https://example.com/product.png"],
+    "video_urls": ["https://example.com/reference.mp4"],
+    "audio_urls": ["https://example.com/voice.mp3"]
+  }'
+```
+
+First/end frame example:
+
+```bash
+curl -X POST "http://127.0.0.1:6001/api/v3/contents/generations/tasks" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedance-2-0-260128",
+    "prompt": "Create a smooth transition from the first image to the second image.",
+    "duration": 5,
+    "ratio": "16:9",
+    "resolution": "720p",
+    "generationType": 2,
+    "images": [
+      "https://example.com/first-frame.png",
+      "https://example.com/last-frame.png"
+    ]
+  }'
+```
+
+Queued/running responses keep `video_url` and `content.video_url` empty. Succeeded responses return the same final video URL in the top-level `video_url`, `content.video_url`, and `items[0].video_url`.
 
 ### 3.1 List models
 

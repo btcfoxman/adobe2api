@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, List
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -58,6 +59,18 @@ def build_admin_router(
         else:
             token_manager.remove(token_id)
         return True
+
+    def _validate_optional_http_url(value: Any, field_name: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must be an http(s) URL",
+            )
+        return text.rstrip("/")
 
     @router.get("/api/v1/health")
     def health():
@@ -592,6 +605,104 @@ def build_admin_router(
                     detail="gpt_image_quality must be one of: low, medium, high",
                 )
             update_data["gpt_image_quality"] = gpt_image_quality
+        if "seedance_max_concurrent" in incoming:
+            try:
+                value = int(incoming["seedance_max_concurrent"])
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_max_concurrent must be an integer between 1 and 20",
+                )
+            if value < 1 or value > 20:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_max_concurrent must be between 1 and 20",
+                )
+            update_data["seedance_max_concurrent"] = value
+        if "seedance_poll_interval_seconds" in incoming:
+            try:
+                value = int(incoming["seedance_poll_interval_seconds"])
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_poll_interval_seconds must be an integer between 1 and 60",
+                )
+            if value < 1 or value > 60:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_poll_interval_seconds must be between 1 and 60",
+                )
+            update_data["seedance_poll_interval_seconds"] = value
+        if "seedance_task_timeout_seconds" in incoming:
+            try:
+                value = int(incoming["seedance_task_timeout_seconds"])
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_task_timeout_seconds must be an integer between 60 and 7200",
+                )
+            if value < 60 or value > 7200:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_task_timeout_seconds must be between 60 and 7200",
+                )
+            update_data["seedance_task_timeout_seconds"] = value
+        if "seedance_media_download_timeout_seconds" in incoming:
+            try:
+                value = int(incoming["seedance_media_download_timeout_seconds"])
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_media_download_timeout_seconds must be an integer between 5 and 600",
+                )
+            if value < 5 or value > 600:
+                raise HTTPException(
+                    status_code=400,
+                    detail="seedance_media_download_timeout_seconds must be between 5 and 600",
+                )
+            update_data["seedance_media_download_timeout_seconds"] = value
+        if "s3_enabled" in incoming:
+            update_data["s3_enabled"] = bool(incoming["s3_enabled"])
+        if "s3_endpoint" in incoming:
+            update_data["s3_endpoint"] = _validate_optional_http_url(
+                incoming["s3_endpoint"], "s3_endpoint"
+            )
+        if "s3_public_base_url" in incoming:
+            update_data["s3_public_base_url"] = _validate_optional_http_url(
+                incoming["s3_public_base_url"], "s3_public_base_url"
+            )
+        if "s3_region" in incoming:
+            update_data["s3_region"] = str(incoming["s3_region"] or "auto").strip() or "auto"
+        if "s3_bucket" in incoming:
+            update_data["s3_bucket"] = str(incoming["s3_bucket"] or "").strip()
+        if "s3_access_key" in incoming:
+            update_data["s3_access_key"] = str(incoming["s3_access_key"] or "").strip()
+        if "s3_secret_key" in incoming:
+            update_data["s3_secret_key"] = str(incoming["s3_secret_key"] or "")
+        if "s3_prefix" in incoming:
+            update_data["s3_prefix"] = str(incoming["s3_prefix"] or "").strip()
+        if "s3_force_path_style" in incoming:
+            update_data["s3_force_path_style"] = bool(incoming["s3_force_path_style"])
+        if "s3_acl" in incoming:
+            update_data["s3_acl"] = str(incoming["s3_acl"] or "").strip()
+        effective_s3_enabled = bool(
+            update_data.get("s3_enabled", config_manager.get("s3_enabled", False))
+        )
+        if effective_s3_enabled:
+            missing_s3 = [
+                name
+                for name, value in (
+                    ("s3_bucket", update_data.get("s3_bucket", config_manager.get("s3_bucket", ""))),
+                    ("s3_access_key", update_data.get("s3_access_key", config_manager.get("s3_access_key", ""))),
+                    ("s3_secret_key", update_data.get("s3_secret_key", config_manager.get("s3_secret_key", ""))),
+                )
+                if not str(value or "").strip()
+            ]
+            if missing_s3:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"S3 upload config missing: {', '.join(missing_s3)}",
+                )
         effective_max = int(
             update_data.get(
                 "generated_max_size_mb",

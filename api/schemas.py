@@ -45,6 +45,20 @@ class ConfigUpdateRequest(BaseModel):
     generated_max_size_mb: Optional[int] = None
     generated_prune_size_mb: Optional[int] = None
     gpt_image_quality: Optional[str] = None
+    seedance_max_concurrent: Optional[int] = None
+    seedance_poll_interval_seconds: Optional[int] = None
+    seedance_task_timeout_seconds: Optional[int] = None
+    seedance_media_download_timeout_seconds: Optional[int] = None
+    s3_enabled: Optional[bool] = None
+    s3_endpoint: Optional[str] = None
+    s3_region: Optional[str] = None
+    s3_bucket: Optional[str] = None
+    s3_access_key: Optional[str] = None
+    s3_secret_key: Optional[str] = None
+    s3_prefix: Optional[str] = None
+    s3_public_base_url: Optional[str] = None
+    s3_force_path_style: Optional[bool] = None
+    s3_acl: Optional[str] = None
 
 
 class RefreshCookieImportRequest(BaseModel):

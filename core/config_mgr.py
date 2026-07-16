@@ -34,6 +34,20 @@ class ConfigManager:
             "generated_max_size_mb": 1024,
             "generated_prune_size_mb": 200,
             "gpt_image_quality": "low",
+            "seedance_max_concurrent": 2,
+            "seedance_poll_interval_seconds": 3,
+            "seedance_task_timeout_seconds": 900,
+            "seedance_media_download_timeout_seconds": 60,
+            "s3_enabled": False,
+            "s3_endpoint": "",
+            "s3_region": "auto",
+            "s3_bucket": "",
+            "s3_access_key": "",
+            "s3_secret_key": "",
+            "s3_prefix": "adobe2api/generated/",
+            "s3_public_base_url": "",
+            "s3_force_path_style": True,
+            "s3_acl": "",
         }
         self.load()
 

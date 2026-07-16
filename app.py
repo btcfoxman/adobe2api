@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.routes.admin import build_admin_router
 from api.routes.entity import build_entity_router
 from api.routes.generation import build_generation_router
+from api.routes.seedance import build_seedance_router
 
 try:
     from PIL import Image
@@ -47,6 +48,7 @@ from core.stores import (
     RequestLogRecord,
     RequestLogStore,
 )
+from core.seedance_tasks import SeedanceTaskStore
 from core.models import (
     MODEL_CATALOG,
     SUPPORTED_RATIOS,
@@ -121,6 +123,7 @@ def serve_generated_file(filename: str):
     return FileResponse(path=target, filename=safe_name, background=background)
 
 store = JobStore()
+seedance_store = SeedanceTaskStore(DATA_DIR / "seedance_tasks.json", max_items=1000)
 log_store = RequestLogStore(DATA_DIR / "request_logs.jsonl", max_items=5000)
 error_store = ErrorDetailStore(DATA_DIR / "request_errors.jsonl", max_items=5000)
 live_log_store = LiveRequestStore(max_items=2000)
@@ -1343,6 +1346,20 @@ app.include_router(
         quota_error_cls=QuotaExhaustedError,
         auth_error_cls=AuthError,
         upstream_temp_error_cls=UpstreamTemporaryError,
+        logger=logger,
+    )
+)
+
+app.include_router(
+    build_seedance_router(
+        store=seedance_store,
+        token_manager=token_manager,
+        client=client,
+        config_manager=config_manager,
+        generated_dir=GENERATED_DIR,
+        require_service_api_key=_require_service_api_key,
+        public_generated_url=_public_generated_url,
+        on_generated_file_written=_on_generated_file_written,
         logger=logger,
     )
 )

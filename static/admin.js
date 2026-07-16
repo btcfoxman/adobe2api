@@ -689,6 +689,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const confTokenRotationStrategy = document.getElementById("confTokenRotationStrategy");
   const confRefreshIntervalHours = document.getElementById("confRefreshIntervalHours");
   const confBatchConcurrency = document.getElementById("confBatchConcurrency");
+  const confSeedanceMaxConcurrent = document.getElementById("confSeedanceMaxConcurrent");
+  const confSeedancePollInterval = document.getElementById("confSeedancePollInterval");
+  const confSeedanceTaskTimeout = document.getElementById("confSeedanceTaskTimeout");
+  const confSeedanceMediaDownloadTimeout = document.getElementById("confSeedanceMediaDownloadTimeout");
+  const confS3Enabled = document.getElementById("confS3Enabled");
+  const confS3Endpoint = document.getElementById("confS3Endpoint");
+  const confS3Region = document.getElementById("confS3Region");
+  const confS3Bucket = document.getElementById("confS3Bucket");
+  const confS3Prefix = document.getElementById("confS3Prefix");
+  const confS3AccessKey = document.getElementById("confS3AccessKey");
+  const confS3SecretKey = document.getElementById("confS3SecretKey");
+  const confS3PublicBaseUrl = document.getElementById("confS3PublicBaseUrl");
+  const confS3Acl = document.getElementById("confS3Acl");
+  const confS3ForcePathStyle = document.getElementById("confS3ForcePathStyle");
   const confGeneratedMaxSizeMb = document.getElementById("confGeneratedMaxSizeMb");
   const confGeneratedPruneSizeMb = document.getElementById("confGeneratedPruneSizeMb");
   const generatedUsageInfo = document.getElementById("generatedUsageInfo");
@@ -779,6 +793,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         confRefreshIntervalHours.value = Number(data.refresh_interval_hours || 15);
         currentBatchConcurrency = Math.max(1, Math.min(100, Number(data.batch_concurrency || 5)));
         confBatchConcurrency.value = currentBatchConcurrency;
+        confSeedanceMaxConcurrent.value = Number(data.seedance_max_concurrent || 2);
+        confSeedancePollInterval.value = Number(data.seedance_poll_interval_seconds || 3);
+        confSeedanceTaskTimeout.value = Number(data.seedance_task_timeout_seconds || 900);
+        confSeedanceMediaDownloadTimeout.value = Number(data.seedance_media_download_timeout_seconds || 60);
+        confS3Enabled.checked = Boolean(data.s3_enabled || false);
+        confS3Endpoint.value = data.s3_endpoint || "";
+        confS3Region.value = data.s3_region || "auto";
+        confS3Bucket.value = data.s3_bucket || "";
+        confS3Prefix.value = data.s3_prefix || "adobe2api/generated/";
+        confS3AccessKey.value = data.s3_access_key || "";
+        confS3SecretKey.value = data.s3_secret_key || "";
+        confS3PublicBaseUrl.value = data.s3_public_base_url || "";
+        confS3Acl.value = data.s3_acl || "";
+        confS3ForcePathStyle.checked = data.s3_force_path_style !== false;
         confGeneratedMaxSizeMb.value = Number(data.generated_max_size_mb || 1024);
         confGeneratedPruneSizeMb.value = Number(data.generated_prune_size_mb || 200);
         if (generatedUsageInfo) {
@@ -823,6 +851,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         token_rotation_strategy: String(confTokenRotationStrategy.value || "round_robin").trim() || "round_robin",
         refresh_interval_hours: Number(confRefreshIntervalHours.value || 15),
         batch_concurrency: Math.max(1, Math.min(100, Number(confBatchConcurrency.value || 5))),
+        seedance_max_concurrent: Math.max(1, Math.min(20, Number(confSeedanceMaxConcurrent.value || 2))),
+        seedance_poll_interval_seconds: Math.max(1, Math.min(60, Number(confSeedancePollInterval.value || 3))),
+        seedance_task_timeout_seconds: Math.max(60, Math.min(7200, Number(confSeedanceTaskTimeout.value || 900))),
+        seedance_media_download_timeout_seconds: Math.max(5, Math.min(600, Number(confSeedanceMediaDownloadTimeout.value || 60))),
+        s3_enabled: confS3Enabled.checked,
+        s3_endpoint: confS3Endpoint.value.trim(),
+        s3_region: confS3Region.value.trim() || "auto",
+        s3_bucket: confS3Bucket.value.trim(),
+        s3_access_key: confS3AccessKey.value.trim(),
+        s3_secret_key: confS3SecretKey.value,
+        s3_prefix: confS3Prefix.value.trim(),
+        s3_public_base_url: confS3PublicBaseUrl.value.trim(),
+        s3_acl: confS3Acl.value.trim(),
+        s3_force_path_style: confS3ForcePathStyle.checked,
         generated_max_size_mb: Math.max(100, Math.min(102400, Number(confGeneratedMaxSizeMb.value || 1024))),
         generated_prune_size_mb: Math.max(10, Math.min(10240, Number(confGeneratedPruneSizeMb.value || 200))),
       };
@@ -842,6 +884,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       if (!Number.isInteger(payload.batch_concurrency) || payload.batch_concurrency < 1 || payload.batch_concurrency > 100) {
         throw new Error("批量导入/积分并发数必须是 1-100 的整数");
+      }
+      if (!Number.isInteger(payload.seedance_max_concurrent) || payload.seedance_max_concurrent < 1 || payload.seedance_max_concurrent > 20) {
+        throw new Error("Seedance max concurrent must be 1-20");
+      }
+      if (!Number.isInteger(payload.seedance_poll_interval_seconds) || payload.seedance_poll_interval_seconds < 1 || payload.seedance_poll_interval_seconds > 60) {
+        throw new Error("Seedance poll interval must be 1-60 seconds");
+      }
+      if (!Number.isInteger(payload.seedance_task_timeout_seconds) || payload.seedance_task_timeout_seconds < 60 || payload.seedance_task_timeout_seconds > 7200) {
+        throw new Error("Seedance task timeout must be 60-7200 seconds");
+      }
+      if (!Number.isInteger(payload.seedance_media_download_timeout_seconds) || payload.seedance_media_download_timeout_seconds < 5 || payload.seedance_media_download_timeout_seconds > 600) {
+        throw new Error("Seedance media download timeout must be 5-600 seconds");
+      }
+      if (payload.s3_endpoint && !/^https?:\/\//i.test(payload.s3_endpoint)) {
+        throw new Error("S3 Endpoint must start with http:// or https://");
+      }
+      if (payload.s3_public_base_url && !/^https?:\/\//i.test(payload.s3_public_base_url)) {
+        throw new Error("S3 Public Base URL must start with http:// or https://");
+      }
+      if (payload.s3_enabled && (!payload.s3_bucket || !payload.s3_access_key || !payload.s3_secret_key)) {
+        throw new Error("S3 Bucket, Access Key and Secret Key are required when S3 upload is enabled");
       }
       if (!Number.isInteger(payload.generated_max_size_mb) || payload.generated_max_size_mb < 100 || payload.generated_max_size_mb > 102400) {
         throw new Error("生成文件空间上限必须是 100-102400 的整数 MB");

@@ -208,6 +208,87 @@
 
             <div class="config-inline-row">
               <div class="form-group inline-item">
+                <label for="confSeedanceMaxConcurrent">Seedance max concurrent</label>
+                <input type="number" id="confSeedanceMaxConcurrent" class="input-text" min="1" max="20" step="1" placeholder="default 2" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confSeedancePollInterval">Seedance poll interval (s)</label>
+                <input type="number" id="confSeedancePollInterval" class="input-text" min="1" max="60" step="1" placeholder="default 3" />
+              </div>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
+                <label for="confSeedanceTaskTimeout">Seedance task timeout (s)</label>
+                <input type="number" id="confSeedanceTaskTimeout" class="input-text" min="60" max="7200" step="1" placeholder="default 900" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confSeedanceMediaDownloadTimeout">Seedance media download timeout (s)</label>
+                <input type="number" id="confSeedanceMediaDownloadTimeout" class="input-text" min="5" max="600" step="1" placeholder="default 60" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="inline-checkbox">
+                <input type="checkbox" id="confS3Enabled" />
+                <span>Enable S3 upload for Seedance result videos</span>
+              </label>
+              <p class="help">When enabled, completed videos are uploaded to S3-compatible storage and callers receive the S3 public URL.</p>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
+                <label for="confS3Endpoint">S3 Endpoint</label>
+                <input type="text" id="confS3Endpoint" class="input-text" placeholder="https://s3.example.com" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confS3Region">S3 Region</label>
+                <input type="text" id="confS3Region" class="input-text" placeholder="auto" />
+              </div>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
+                <label for="confS3Bucket">S3 Bucket</label>
+                <input type="text" id="confS3Bucket" class="input-text" placeholder="bucket-name" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confS3Prefix">S3 Prefix</label>
+                <input type="text" id="confS3Prefix" class="input-text" placeholder="adobe2api/generated/" />
+              </div>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
+                <label for="confS3AccessKey">S3 Access Key</label>
+                <input type="text" id="confS3AccessKey" class="input-text" autocomplete="off" placeholder="Access Key" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confS3SecretKey">S3 Secret Key</label>
+                <input type="password" id="confS3SecretKey" class="input-text" autocomplete="new-password" placeholder="Secret Key" />
+              </div>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
+                <label for="confS3PublicBaseUrl">S3 Public Base URL</label>
+                <input type="text" id="confS3PublicBaseUrl" class="input-text" placeholder="https://cdn.example.com" />
+              </div>
+              <div class="form-group inline-item">
+                <label for="confS3Acl">S3 ACL</label>
+                <input type="text" id="confS3Acl" class="input-text" placeholder="public-read" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="inline-checkbox">
+                <input type="checkbox" id="confS3ForcePathStyle" />
+                <span>Use S3 path-style URL</span>
+              </label>
+            </div>
+
+            <div class="config-inline-row">
+              <div class="form-group inline-item">
                 <label for="confGeneratedMaxSizeMb">生成文件空间上限 (MB)</label>
                 <input type="number" id="confGeneratedMaxSizeMb" class="input-text" min="100" max="102400" step="1" placeholder="默认 1024" />
               </div>

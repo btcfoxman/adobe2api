@@ -10,6 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # 只安装必要的系统依赖（极简模式）
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
