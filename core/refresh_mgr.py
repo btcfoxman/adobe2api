@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 import uuid
@@ -185,6 +186,10 @@ class RefreshManager:
         return cls._refresh_interval_hours() * 3600
 
     def _requests_proxies(self):
+        env_proxy = os.getenv("ADOBE_PROXY")
+        if env_proxy is not None:
+            proxy = env_proxy.strip()
+            return {"http": proxy, "https": proxy} if proxy else None
         proxy = str(config_manager.get("proxy", "") or "").strip()
         use_proxy = bool(config_manager.get("use_proxy", False))
         if not (use_proxy and proxy):
