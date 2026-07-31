@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from .catalog import DEFAULT_MODEL_ID, MODEL_CATALOG, SUPPORTED_RATIOS
+from .external_mapping import resolve_external_image_model
 
 
 def resolve_model(model_id: Optional[str]) -> dict:
@@ -31,8 +32,15 @@ def ratio_from_size(size: str) -> str:
 
 
 def resolve_ratio_and_resolution(
-    data: dict, model_id: Optional[str]
+    data: dict,
+    model_id: Optional[str],
+    model_mappings: Optional[dict] = None,
 ) -> tuple[str, str, str]:
+    external = resolve_external_image_model(data, model_id, model_mappings)
+    if external is not None:
+        return external
+    if model_mappings is not None and model_id and model_id not in MODEL_CATALOG:
+        raise HTTPException(status_code=400, detail=f"Invalid model: {model_id}")
     ratio = str(data.get("aspect_ratio") or "").strip() or ratio_from_size(
         data.get("size", "1024x1024")
     )

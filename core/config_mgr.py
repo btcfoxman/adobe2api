@@ -2,6 +2,8 @@ import json
 import threading
 from pathlib import Path
 
+from core.models.external_mapping import default_external_image_model_mappings
+
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
 CONFIG_DIR = BASE_DIR / "config"
@@ -34,6 +36,7 @@ class ConfigManager:
             "generated_max_size_mb": 1024,
             "generated_prune_size_mb": 200,
             "gpt_image_quality": "low",
+            "image_model_mappings": default_external_image_model_mappings(),
             "seedance_max_concurrent": 2,
             "seedance_poll_interval_seconds": 3,
             "seedance_task_timeout_seconds": 900,

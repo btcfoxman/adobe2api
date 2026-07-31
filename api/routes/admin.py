@@ -20,6 +20,7 @@ from api.schemas import (
     TokenBatchAddRequest,
     TokenCreditsBatchRefreshRequest,
 )
+from core.models import validate_external_image_model_mappings
 
 
 def build_admin_router(
@@ -605,6 +606,15 @@ def build_admin_router(
                     detail="gpt_image_quality must be one of: low, medium, high",
                 )
             update_data["gpt_image_quality"] = gpt_image_quality
+        if "image_model_mappings" in incoming:
+            try:
+                update_data["image_model_mappings"] = (
+                    validate_external_image_model_mappings(
+                        incoming["image_model_mappings"]
+                    )
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         if "seedance_max_concurrent" in incoming:
             try:
                 value = int(incoming["seedance_max_concurrent"])

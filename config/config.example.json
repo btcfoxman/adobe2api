@@ -12,5 +12,22 @@
   "retry_backoff_seconds": 1.0,
   "retry_on_status_codes": [429, 451, 500, 502, 503, 504],
   "retry_on_error_types": ["timeout", "connection", "proxy"],
-  "token_rotation_strategy": "round_robin"
+  "token_rotation_strategy": "round_robin",
+  "image_model_mappings": {
+    "gpt-image-2": {
+      "template": "firefly-gpt-image-{resolution}-{ratio}",
+      "default_resolution": "2k",
+      "default_ratio": "1:1"
+    },
+    "nano-banana-2": {
+      "template": "firefly-nano-banana2-{resolution}-{ratio}",
+      "default_resolution": "2k",
+      "default_ratio": "1:1"
+    },
+    "nano-banana-pro": {
+      "template": "firefly-nano-banana-pro-{resolution}-{ratio}",
+      "default_resolution": "2k",
+      "default_ratio": "1:1"
+    }
+  }
 }

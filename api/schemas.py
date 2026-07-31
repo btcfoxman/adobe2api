@@ -10,6 +10,36 @@ class GenerateRequest(BaseModel):
     model: Optional[str] = None
 
 
+class ResponsesCreateRequest(BaseModel):
+    """OpenAI Responses-compatible request for an asynchronous image task."""
+
+    model: Optional[str] = None
+    input: Any = None
+    prompt: Optional[str] = None
+    instructions: Optional[str] = None
+    tools: Optional[List[dict[str, Any]]] = None
+    stream: Optional[bool] = False
+    parallel_tool_calls: Optional[bool] = True
+    temperature: Optional[float] = None
+    tool_choice: Any = None
+    top_p: Optional[float] = None
+    max_output_tokens: Optional[int] = None
+    previous_response_id: Optional[str] = None
+    reasoning: Any = None
+    truncation: Any = None
+    user: Optional[str] = None
+    store: Optional[bool] = None
+    background: Optional[bool] = True
+    image_urls: List[str] = Field(default_factory=list)
+    size: Optional[str] = None
+    resolution: Optional[str] = None
+    ratio: Optional[str] = None
+    aspect_ratio: Optional[str] = None
+    quality: Optional[str] = None
+    n: int = Field(default=1, ge=1)
+    metadata: Optional[dict[str, Any]] = None
+
+
 class TokenAddRequest(BaseModel):
     token: str
 
@@ -45,6 +75,7 @@ class ConfigUpdateRequest(BaseModel):
     generated_max_size_mb: Optional[int] = None
     generated_prune_size_mb: Optional[int] = None
     gpt_image_quality: Optional[str] = None
+    image_model_mappings: Optional[dict[str, Any]] = None
     seedance_max_concurrent: Optional[int] = None
     seedance_poll_interval_seconds: Optional[int] = None
     seedance_task_timeout_seconds: Optional[int] = None

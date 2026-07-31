@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.routes.admin import build_admin_router
 from api.routes.entity import build_entity_router
 from api.routes.generation import build_generation_router
+from api.routes.responses import build_responses_router
 from api.routes.seedance import build_seedance_router
 
 try:
@@ -49,12 +50,14 @@ from core.stores import (
     RequestLogStore,
 )
 from core.seedance_tasks import SeedanceTaskStore
+from core.response_tasks import ResponseTaskStore
 from core.models import (
+    DEFAULT_MODEL_ID,
     MODEL_CATALOG,
     SUPPORTED_RATIOS,
     VIDEO_MODEL_CATALOG,
     resolve_model,
-    resolve_ratio_and_resolution,
+    resolve_ratio_and_resolution as resolve_catalog_ratio_and_resolution,
 )
 
 
@@ -66,6 +69,16 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 GENERATED_DIR = DATA_DIR / "generated"
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_ratio_and_resolution(
+    data: dict, model_id: Optional[str]
+) -> tuple[str, str, str]:
+    return resolve_catalog_ratio_and_resolution(
+        data,
+        model_id,
+        config_manager.get("image_model_mappings", {}),
+    )
 
 _GENERATED_RECONCILE_INTERVAL_SEC = 300
 _generated_storage_lock = threading.Lock()
@@ -123,6 +136,7 @@ def serve_generated_file(filename: str):
     return FileResponse(path=target, filename=safe_name, background=background)
 
 store = JobStore()
+response_task_store = ResponseTaskStore(DATA_DIR / "response_tasks.db", max_items=5000)
 seedance_store = SeedanceTaskStore(DATA_DIR / "seedance_tasks.json", max_items=1000)
 log_store = RequestLogStore(DATA_DIR / "request_logs.jsonl", max_items=5000)
 error_store = ErrorDetailStore(DATA_DIR / "request_errors.jsonl", max_items=5000)
@@ -217,6 +231,7 @@ def _set_request_error_detail(
     op_map = {
         "/v1/chat/completions": "chat.completions",
         "/v1/images/generations": "images.generations",
+        "/v1/responses": "responses.create",
         "/api/v1/generate": "api.generate",
     }
     path = str(getattr(getattr(request, "url", None), "path", "") or "")
@@ -434,6 +449,7 @@ async def request_logger(request: Request, call_next):
     op_map = {
         "/v1/chat/completions": "chat.completions",
         "/v1/images/generations": "images.generations",
+        "/v1/responses": "responses.create",
         "/v1/entities": "entities.create" if method == "POST" else "",
     }
     operation = op_map.get(path, "")
@@ -446,6 +462,7 @@ async def request_logger(request: Request, call_next):
             if path in {
                 "/v1/images/generations",
                 "/v1/chat/completions",
+                "/v1/responses",
                 "/v1/entities",
                 "/api/v1/generate",
             }:
@@ -1084,15 +1101,15 @@ def _public_generated_url(request: Request, filename: str) -> str:
     safe_name = str(filename or "").lstrip("/")
     path = f"/generated/{safe_name}"
 
-    config_base = str(config_manager.get("public_base_url", "") or "").strip()
-    if config_base:
-        return f"{config_base.rstrip('/')}{path}"
-
     override = str(
         os.getenv("ADOBE_PUBLIC_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or ""
     ).strip()
     if override:
         return f"{override.rstrip('/')}{path}"
+
+    config_base = str(config_manager.get("public_base_url", "") or "").strip()
+    if config_base:
+        return f"{config_base.rstrip('/')}{path}"
 
     forwarded_host = str(request.headers.get("x-forwarded-host") or "").strip()
     if forwarded_host:
@@ -1328,7 +1345,7 @@ app.include_router(
         video_model_catalog=VIDEO_MODEL_CATALOG,
         supported_ratios=SUPPORTED_RATIOS,
         resolve_model=resolve_model,
-        resolve_ratio_and_resolution=resolve_ratio_and_resolution,
+        resolve_ratio_and_resolution=_resolve_ratio_and_resolution,
         require_service_api_key=_require_service_api_key,
         set_request_task_progress=_set_request_task_progress,
         run_with_token_retries=_run_with_token_retries,
@@ -1342,6 +1359,27 @@ app.include_router(
         video_ext_from_meta=_video_ext_from_meta,
         extract_prompt_from_messages=_extract_prompt_from_messages,
         sse_chat_stream=_sse_chat_stream,
+        on_generated_file_written=_on_generated_file_written,
+        quota_error_cls=QuotaExhaustedError,
+        auth_error_cls=AuthError,
+        upstream_temp_error_cls=UpstreamTemporaryError,
+        logger=logger,
+    )
+)
+
+app.include_router(
+    build_responses_router(
+        store=response_task_store,
+        token_manager=token_manager,
+        client=client,
+        generated_dir=GENERATED_DIR,
+        video_model_catalog=VIDEO_MODEL_CATALOG,
+        default_model_id=DEFAULT_MODEL_ID,
+        resolve_model=resolve_model,
+        resolve_ratio_and_resolution=_resolve_ratio_and_resolution,
+        require_service_api_key=_require_service_api_key,
+        public_image_url=_public_image_url,
+        load_input_images=_load_input_images,
         on_generated_file_written=_on_generated_file_written,
         quota_error_cls=QuotaExhaustedError,
         auth_error_cls=AuthError,

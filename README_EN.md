@@ -19,6 +19,7 @@ Current design:
 
 - External unified entry: `/v1/chat/completions` (image + video)
 - Optional image-only endpoint: `/v1/images/generations`
+- Persistent async image API: `POST /v1/responses` + `GET /v1/responses/{response_id}`
 - Token pool management (manual token + auto-refresh token)
 - Admin web UI: token/config/logs/refresh profile import
 
@@ -126,6 +127,14 @@ GPT Image models (experimental):
   - `firefly-gpt-image-2k-16x9`
   - `firefly-gpt-image-4k-1x1`
   - `firefly-gpt-image-2k-21x9`
+
+LiteLLM / canonical image model mapping:
+
+- Both synchronous `/v1/images/generations` and asynchronous `/v1/responses` accept `gpt-image-2`, `nano-banana-2`, `nano-banana-pro`, plus canonical names ending in `-1k`, `-2k`, or `-4k`.
+- The caller's `model`, `size`, `ratio` / `aspect_ratio`, and `resolution` reach adobe2api unchanged; the concrete Firefly model is resolved only inside adobe2api.
+- Explicit `resolution` takes priority over an inferred `size`; the model-name resolution suffix is only a hint when neither is supplied. Base models default to `2k` and `1:1`.
+- Responses return the caller's canonical model name while the persistent task stores the resolved Firefly model internally.
+- Configure mappings through `image_model_mappings` in `config/config.json` or the admin UI's image mapping tab. Templates support `{resolution}`, `{ratio}`, `{ratio_colon}`, and `{model}`.
 
 About `auto`:
 
@@ -349,6 +358,49 @@ curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
   }'
 ```
 
+### 3.4 Persistent async image API: `/v1/responses`
+
+Create a task:
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/responses" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "firefly-nano-banana-pro-2k-16x9",
+    "input": "a cinematic mountain sunrise",
+    "tools": [{"type":"image_generation"}],
+    "background": true
+  }'
+```
+
+Canonical model names can also provide size, ratio, and resolution independently:
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
+  -H "Authorization: Bearer projectx_webapp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2-4k",
+    "prompt": "a cinematic city skyline",
+    "size": "2048x1152",
+    "ratio": "16:9",
+    "resolution": "2k"
+  }'
+```
+
+The returned `id` uses the `resp_*` form. Query it with:
+
+```bash
+curl "http://127.0.0.1:6001/v1/responses/<response_id>" \
+  -H "Authorization: Bearer <service_api_key>"
+```
+
+Status is `in_progress`, `completed`, or `failed`. Successful image URLs are in
+`output[].url`. Tasks are persisted in `data/response_tasks.db`; completed tasks
+remain queryable after restart, while interrupted tasks are marked `failed`.
+Use `input_image` parts in `input` for asynchronous image-to-image generation.
+
 ## 4) Cookie Import
 
 ### Step 1: Export using the Browser Extension (Recommended)
@@ -384,6 +436,7 @@ Once you have the exported JSON file, follow these steps to import it:
 ## 5) Storage Paths
 
 - Generated media: `data/generated/`
+- Async image task database: `data/response_tasks.db`
 - Request logs: `data/request_logs.jsonl`
 - Token pool: `config/tokens.json`
 - Service config: `config/config.json`

@@ -241,6 +241,7 @@ def build_generation_router(
             data, model_id
         )
         model_conf = resolve_model(resolved_model_id)
+        response_model_id = str(model_id or "").strip() or resolved_model_id
 
         try:
             set_request_task_progress(
@@ -296,7 +297,7 @@ def build_generation_router(
                 set_request_preview(request, image_url, kind="image")
                 return {
                     "created": int(time.time()),
-                    "model": resolved_model_id,
+                    "model": response_model_id,
                     "data": [{"url": image_url}],
                 }
 
@@ -450,9 +451,16 @@ def build_generation_router(
         if output_resolution not in {"1K", "2K", "4K"}:
             raise HTTPException(status_code=400, detail="unsupported output_resolution")
 
-        model_conf = resolve_model(data.model)
+        model_conf = resolve_model(None)
         if data.model:
-            output_resolution = model_conf["output_resolution"]
+            ratio, output_resolution, resolved_model_id = resolve_ratio_and_resolution(
+                {
+                    "aspect_ratio": ratio,
+                    "resolution": output_resolution,
+                },
+                data.model,
+            )
+            model_conf = resolve_model(resolved_model_id)
 
         job = store.create(prompt=prompt, aspect_ratio=ratio)
 
@@ -623,6 +631,7 @@ def build_generation_router(
         image_model_conf = (
             resolve_model(resolved_model_id) if not is_video_model else {}
         )
+        response_model_id = model_id or resolved_model_id
 
         try:
             entity_account_id = ""
@@ -785,7 +794,7 @@ def build_generation_router(
                     "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
                     "object": "chat.completion",
                     "created": int(time.time()),
-                    "model": resolved_model_id,
+                    "model": response_model_id,
                     "choices": [
                         {
                             "index": 0,

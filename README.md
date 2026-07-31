@@ -17,6 +17,7 @@ English README: `README_EN.md`
 
 - 对外统一入口：`/v1/chat/completions`（图像 + 视频）
 - 可选图像专用接口：`/v1/images/generations`
+- 持久化异步图片接口：`POST /v1/responses` + `GET /v1/responses/{response_id}`
 - Token 池管理（手动 Token + 自动刷新 Token）
 - 管理后台 Web UI：Token / 配置 / 日志 / 刷新配置导入
 
@@ -123,6 +124,14 @@ GPT Image 图像模型（实验接入）：
   - `firefly-gpt-image-2k-16x9`
   - `firefly-gpt-image-4k-1x1`
   - `firefly-gpt-image-2k-21x9`
+
+LiteLLM / 标准图片模型映射：
+
+- 同步 `/v1/images/generations` 与异步 `/v1/responses` 均接受 `gpt-image-2`、`nano-banana-2`、`nano-banana-pro`，以及带 `-1k` / `-2k` / `-4k` 后缀的标准模型名。
+- `model`、`size`、`ratio` / `aspect_ratio`、`resolution` 由调用方原样传入 adobe2api；实际 Firefly 模型只在 adobe2api 内部解析。
+- 显式 `resolution` 优先于 `size` 推断，二者都未提供时才使用模型名的分辨率后缀；基础模型默认使用 `2k` 和 `1:1`。
+- Responses 返回调用方传入的标准模型名，持久化任务内部保存解析后的 Firefly 模型名。
+- 映射保存在 `config/config.json` 的 `image_model_mappings`，也可在管理后台「图片模型映射」中在线编辑。模板支持 `{resolution}`、`{ratio}`、`{ratio_colon}`、`{model}`。
 
 关于 `auto`：
 
@@ -366,6 +375,48 @@ curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
   }'
 ```
 
+### 3.5 持久化异步图片接口：`/v1/responses`
+
+创建任务：
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/responses" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "firefly-nano-banana-pro-2k-16x9",
+    "input": "a cinematic mountain sunrise",
+    "tools": [{"type":"image_generation"}],
+    "background": true
+  }'
+```
+
+也可以使用标准模型名并独立传入尺寸、比例和分辨率：
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
+  -H "Authorization: Bearer projectx_webapp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2-4k",
+    "prompt": "a cinematic city skyline",
+    "size": "2048x1152",
+    "ratio": "16:9",
+    "resolution": "2k"
+  }'
+```
+
+返回的 `id` 为 `resp_*`。使用该 ID 查询任务：
+
+```bash
+curl "http://127.0.0.1:6001/v1/responses/<response_id>" \
+  -H "Authorization: Bearer <service_api_key>"
+```
+
+状态依次为 `in_progress`、`completed` 或 `failed`；成功后图片地址位于
+`output[].url`。任务存储在 `data/response_tasks.db`，已完成任务在服务重启后仍可查询；
+重启时尚未完成的任务会标记为 `failed`。`input` 中的 `input_image` 可用于异步图生图。
+
 ## 4）Cookie 导入
 
 ### 第一步：使用浏览器插件导出（推荐）
@@ -409,6 +460,7 @@ curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
 ## 5）存储路径
 
 - 生成媒体文件：`data/generated/`
+- 异步图片任务数据库：`data/response_tasks.db`
 - 请求日志：`data/request_logs.jsonl`
 - Token 池：`config/tokens.json`
 - 服务配置：`config/config.json`

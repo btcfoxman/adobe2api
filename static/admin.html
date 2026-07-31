@@ -93,6 +93,7 @@
           <div class="config-category-tabs" role="tablist" aria-label="配置分类">
             <button class="config-cat-btn active" type="button" data-target="cfg-account">账户与安全</button>
             <button class="config-cat-btn" type="button" data-target="cfg-network">代理与网络</button>
+            <button class="config-cat-btn" type="button" data-target="cfg-image-mapping">图片模型映射</button>
             <button class="config-cat-btn" type="button" data-target="cfg-retry">重试与容错</button>
             <button class="config-cat-btn" type="button" data-target="cfg-storage">刷新与存储</button>
           </div>
@@ -151,6 +152,14 @@
                 <option value="high">high</option>
               </select>
               <p class="help">仅作用于 GPT Image 模型。默认 low，后续 GPT 生图会自动带上该质量对应的参数。</p>
+            </div>
+          </section>
+
+          <section id="cfg-image-mapping" class="config-cat-pane">
+            <div class="form-group">
+              <label for="confImageModelMappings">标准模型到 Adobe 模型的映射（JSON）</label>
+              <textarea id="confImageModelMappings" class="input-text" rows="20" spellcheck="false" style="min-height: 420px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;"></textarea>
+              <p class="help">支持 <code>{resolution}</code>、<code>{ratio}</code>、<code>{ratio_colon}</code> 和 <code>{model}</code> 占位符。模型名的 <code>-1k/-2k/-4k</code> 后缀作为分辨率提示；调用者显式传入的 resolution 或 size 优先。</p>
             </div>
           </section>
 

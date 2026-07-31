@@ -681,6 +681,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const confProxy = document.getElementById("confProxy");
   const confGenerateTimeout = document.getElementById("confGenerateTimeout");
   const confGptImageQuality = document.getElementById("confGptImageQuality");
+  const confImageModelMappings = document.getElementById("confImageModelMappings");
   const confRetryEnabled = document.getElementById("confRetryEnabled");
   const confRetryMaxAttempts = document.getElementById("confRetryMaxAttempts");
   const confRetryBackoffSeconds = document.getElementById("confRetryBackoffSeconds");
@@ -780,6 +781,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         confProxy.value = data.proxy || "";
         confGenerateTimeout.value = Number(data.generate_timeout || 300);
         confGptImageQuality.value = String(data.gpt_image_quality || "low");
+        confImageModelMappings.value = JSON.stringify(data.image_model_mappings || {}, null, 2);
         confRetryEnabled.checked = Boolean(data.retry_enabled ?? true);
         confRetryMaxAttempts.value = Number(data.retry_max_attempts || 3);
         confRetryBackoffSeconds.value = Number(data.retry_backoff_seconds ?? 1.0);
@@ -826,6 +828,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       // 保留未在此页面显示的配置项
       const currentRes = await fetch("/api/v1/config");
       const currentData = await currentRes.json();
+      let imageModelMappings;
+      try {
+        imageModelMappings = JSON.parse(String(confImageModelMappings.value || "{}"));
+      } catch (err) {
+        throw new Error(`图片模型映射不是有效 JSON：${err.message || err}`);
+      }
+      if (!imageModelMappings || Array.isArray(imageModelMappings) || typeof imageModelMappings !== "object") {
+        throw new Error("图片模型映射必须是 JSON 对象");
+      }
       
       const payload = {
         ...currentData,
@@ -837,6 +848,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         proxy: confProxy.value.trim(),
         generate_timeout: Math.max(1, Number(confGenerateTimeout.value || 300)),
         gpt_image_quality: String(confGptImageQuality.value || "low").trim().toLowerCase() || "low",
+        image_model_mappings: imageModelMappings,
         retry_enabled: confRetryEnabled.checked,
         retry_max_attempts: Math.max(1, Math.min(10, Number(confRetryMaxAttempts.value || 3))),
         retry_backoff_seconds: Math.max(0, Math.min(30, Number(confRetryBackoffSeconds.value || 1))),
