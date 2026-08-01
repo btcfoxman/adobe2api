@@ -334,7 +334,7 @@
             <button id="clearLogsBtn" class="danger">清空日志</button>
           </div>
         </div>
-        <p class="help" style="margin-bottom: 16px;">仅展示外部 OpenAI 风格请求日志。失败状态中的状态码可点击查看错误信息。</p>
+        <p class="help" style="margin-bottom: 16px;">展示所有生成请求；请求参数包含尺寸、比例、分辨率、时长和参考素材。失败状态中的状态码可点击查看错误信息。</p>
         <div class="stats-grid" id="logsStatsGrid">
           <div class="stat-card">
             <div class="stat-label">图片生成数</div>
@@ -365,13 +365,14 @@
                 <th>进度</th>
                 <th>账号</th>
                 <th>模型</th>
+                <th>请求参数</th>
                 <th>提示词摘要</th>
                 <th>预览</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td colspan="8" class="empty-state">暂无日志</td>
+                <td colspan="9" class="empty-state">暂无日志</td>
               </tr>
             </tbody>
           </table>

@@ -1324,7 +1324,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         renderLogStats(null);
       }
     } catch (err) {
-      logsTbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color: #ffb4bc;">${err.message || "日志加载失败"}</td></tr>`;
+      logsTbody.innerHTML = `<tr><td colspan="9" class="empty-state" style="color: #ffb4bc;">${err.message || "日志加载失败"}</td></tr>`;
       logsRunningTotal = 0;
       logsTotalPages = Math.max(1, logsCurrentPage || 1);
       renderLogsPagination();
@@ -1370,6 +1370,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (logsNextBtn) {
       logsNextBtn.disabled = safeCurrent >= safeTotalPages;
     }
+  }
+
+  function formatLogParamValue(key, value) {
+    if (key === "duration") {
+      const text = String(value ?? "").trim();
+      return text && !/s|秒$/i.test(text) ? `${text}秒` : text;
+    }
+    if (key === "generate_audio") {
+      return value === true || String(value).toLowerCase() === "true" ? "开启" : "关闭";
+    }
+    if (key === "mode") {
+      const mode = String(value ?? "").trim();
+      if (mode === "2") return "首尾帧";
+      if (mode === "3") return "参考模式";
+      return mode;
+    }
+    if (typeof value === "object" && value !== null) {
+      try {
+        return JSON.stringify(value);
+      } catch (_) {
+        return String(value);
+      }
+    }
+    return String(value ?? "").trim();
+  }
+
+  function buildLogRequestParamsCell(item) {
+    const params = item?.request_params && typeof item.request_params === "object"
+      ? item.request_params
+      : {};
+    const labels = [
+      ["size", "尺寸"],
+      ["ratio", "比例"],
+      ["resolution", "分辨率"],
+      ["duration", "时长"],
+      ["quality", "质量"],
+      ["n", "数量"],
+      ["mode", "模式"],
+      ["reference_mode", "参考方式"],
+      ["generate_audio", "生成音频"],
+      ["response_format", "返回"],
+    ];
+    const chips = [];
+    labels.forEach(([key, label]) => {
+      const value = params[key];
+      if (value === undefined || value === null || value === "") return;
+      const formatted = formatLogParamValue(key, value);
+      if (!formatted) return;
+      chips.push(
+        `<span class="log-param-chip"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatted)}</strong></span>`
+      );
+    });
+
+    const references = Array.isArray(params.reference_assets)
+      ? params.reference_assets
+      : [];
+    const referenceItems = references.map((asset, index) => {
+      const kind = String(asset?.kind || "image").trim().toLowerCase();
+      const kindLabel = kind === "video" ? "视频" : (kind === "audio" ? "音频" : "图片");
+      const label = String(asset?.label || asset?.name || `参考${kindLabel}${index + 1}`).trim();
+      const rawUrl = String(asset?.url || "").trim();
+      const url = normalizePreviewUrl(rawUrl);
+      const title = rawUrl ? `${kindLabel}: ${rawUrl}` : `${kindLabel}: ${label}`;
+      if (url) {
+        return `<button class="log-reference-chip reference-preview-btn" type="button" data-url="${encodeURIComponent(url)}" data-kind="${escapeHtml(kind)}" title="${escapeHtml(title)}">${escapeHtml(kindLabel)} · ${escapeHtml(label)}</button>`;
+      }
+      return `<span class="log-reference-chip" title="${escapeHtml(title)}">${escapeHtml(kindLabel)} · ${escapeHtml(label)}</span>`;
+    });
+
+    const referenceCount = Number(params.reference_count || references.length || 0);
+    if (referenceCount > references.length) {
+      referenceItems.push(
+        `<span class="log-reference-chip">另有 ${referenceCount - references.length} 项素材</span>`
+      );
+    }
+    if (!chips.length && !referenceItems.length) {
+      return `<span class="log-cell-empty">-</span>`;
+    }
+    return `
+      <div class="log-request-params">${chips.join("")}</div>
+      ${referenceItems.length ? `<div class="log-reference-list">${referenceItems.join("")}</div>` : ""}
+    `;
   }
 
   function buildLogRow(item, { forceInProgress = false } = {}) {
@@ -1423,6 +1505,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         : `<span class="log-account-email">-</span>`
     );
     const modelText = String(item.model || "-");
+    const requestParamsCell = buildLogRequestParamsCell(item);
+    const promptText = String(item.prompt_preview || "-");
     const tokenCell = `<div class="log-account-cell">${accountParts.join("<br>")}</div>`;
     const previewCell = previewUrl
       ? `<button class="small preview-btn" data-url="${encodeURIComponent(previewUrl)}" data-kind="${previewKind || ""}">查看</button>`
@@ -1434,7 +1518,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       <td>${progressCell}</td>
       <td title="${tokenTitle}">${tokenCell}</td>
       <td class="log-model-cell" title="${escapeHtml(modelText)}">${escapeHtml(modelText)}</td>
-      <td class="log-prompt-cell" title="${(item.prompt_preview || "").replace(/"/g, "&quot;")}">${item.prompt_preview || "-"}</td>
+      <td class="log-request-cell">${requestParamsCell}</td>
+      <td class="log-prompt-cell" title="${escapeHtml(promptText)}">${escapeHtml(promptText)}</td>
       <td>${previewCell}</td>
     `;
     if (isRunning) tr.classList.add("log-row-running");
@@ -1454,7 +1539,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ];
 
     if (!allRows.length) {
-      logsTbody.innerHTML = `<tr><td colspan="8" class="empty-state">暂无请求日志</td></tr>`;
+      logsTbody.innerHTML = `<tr><td colspan="9" class="empty-state">暂无请求日志</td></tr>`;
       return;
     }
 
@@ -1476,6 +1561,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function inferPreviewKind(url) {
     const lowered = String(url || "").toLowerCase();
     if (/(\.mp4|\.webm|\.ogg)(\?|$)/.test(lowered)) return "video";
+    if (/(\.mp3|\.wav|\.m4a|\.aac|\.flac)(\?|$)/.test(lowered)) return "audio";
     return "image";
   }
 
@@ -1549,17 +1635,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
       // ignore parse errors and fallback
     }
-    const ext = kind === "video" ? "mp4" : "png";
+    const ext = kind === "video" ? "mp4" : (kind === "audio" ? "mp3" : "png");
     return `asset-${Date.now()}.${ext}`;
   }
 
   function openPreview(url, kind) {
     if (!previewModal || !previewContent || !url) return;
     const mediaKind = kind || inferPreviewKind(url);
+    const safeUrl = escapeHtml(url);
     if (mediaKind === "video") {
-      previewContent.innerHTML = `<video controls autoplay playsinline src="${url}"></video>`;
+      previewContent.innerHTML = `<video controls autoplay playsinline src="${safeUrl}"></video>`;
+    } else if (mediaKind === "audio") {
+      previewContent.innerHTML = `<audio controls autoplay src="${safeUrl}"></audio>`;
     } else {
-      previewContent.innerHTML = `<img src="${url}" alt="预览图" />`;
+      previewContent.innerHTML = `<img src="${safeUrl}" alt="预览图" />`;
     }
     if (previewDownloadBtn) {
       previewDownloadBtn.setAttribute("href", url);
@@ -1573,9 +1662,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     logsTbody.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.classList.contains("preview-btn")) {
-        const encodedUrl = target.getAttribute("data-url") || "";
-        const kind = (target.getAttribute("data-kind") || "").trim();
+      const previewTarget = target.closest(".preview-btn, .reference-preview-btn");
+      if (previewTarget instanceof HTMLElement) {
+        const encodedUrl = previewTarget.getAttribute("data-url") || "";
+        const kind = (previewTarget.getAttribute("data-kind") || "").trim();
         if (!encodedUrl) return;
         openPreview(decodeURIComponent(encodedUrl), kind);
         return;

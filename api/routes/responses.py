@@ -9,6 +9,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException, Request
 
 from api.schemas import ResponsesCreateRequest
+from core.request_logging import set_request_log_params
 
 
 def _text(value: Any) -> str:
@@ -237,6 +238,15 @@ def build_responses_router(
         }
         ratio, output_resolution, resolved_model_id = resolve_ratio_and_resolution(
             options, requested_model or None
+        )
+        set_request_log_params(
+            request,
+            media_type="image",
+            size=request_size,
+            ratio=ratio,
+            resolution=output_resolution,
+            quality=data.quality,
+            n=data.n,
         )
         model_conf = resolve_model(resolved_model_id)
         image_urls = image_urls_from_responses_input(data)

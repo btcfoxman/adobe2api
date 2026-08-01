@@ -48,7 +48,7 @@ body {
 }
 
 .shell {
-  max-width: 1000px;
+  max-width: 1280px;
   margin: 40px auto;
   padding: 0 20px;
   display: flex;
@@ -469,6 +469,7 @@ table {
 #logsTable,
 #runningLogsTable {
   table-layout: auto;
+  min-width: 1180px;
 }
 
 #logsTable th:nth-child(1),
@@ -486,10 +487,10 @@ table {
 #logsTable td:nth-child(4),
 #runningLogsTable th:nth-child(4),
 #runningLogsTable td:nth-child(4),
-#logsTable th:nth-child(8),
-#logsTable td:nth-child(8),
-#runningLogsTable th:nth-child(8),
-#runningLogsTable td:nth-child(8) {
+#logsTable th:nth-child(9),
+#logsTable td:nth-child(9),
+#runningLogsTable th:nth-child(9),
+#runningLogsTable td:nth-child(9) {
   width: auto;
   white-space: nowrap;
 }
@@ -506,22 +507,30 @@ table {
 #logsTable td:nth-child(5),
 #runningLogsTable th:nth-child(5),
 #runningLogsTable td:nth-child(5) {
-  width: 500px;
+  width: 180px;
 }
 
 #logsTable th:nth-child(6),
 #logsTable td:nth-child(6),
 #runningLogsTable th:nth-child(6),
 #runningLogsTable td:nth-child(6) {
-  width: 190px;
+  width: 170px;
 }
 
 #logsTable th:nth-child(7),
 #logsTable td:nth-child(7),
 #runningLogsTable th:nth-child(7),
 #runningLogsTable td:nth-child(7) {
+  min-width: 255px;
+  width: 26%;
+}
+
+#logsTable th:nth-child(8),
+#logsTable td:nth-child(8),
+#runningLogsTable th:nth-child(8),
+#runningLogsTable td:nth-child(8) {
   min-width: 220px;
-  width: 35%;
+  width: 24%;
 }
 
 #logsTable td,
@@ -569,6 +578,70 @@ table {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+.log-request-cell {
+  min-width: 255px;
+}
+
+.log-request-params,
+.log-reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.log-reference-list {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(165, 197, 230, 0.14);
+}
+
+.log-param-chip,
+.log-reference-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid rgba(143, 176, 211, 0.2);
+  border-radius: 7px;
+  background: rgba(17, 37, 56, 0.72);
+  color: #88a6c5;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.log-param-chip strong {
+  color: #d7e8fa;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+}
+
+.log-reference-chip {
+  max-width: 210px;
+  overflow: hidden;
+  border-color: rgba(44, 199, 170, 0.24);
+  background: rgba(44, 199, 170, 0.08);
+  color: #8ddacb;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.log-reference-chip {
+  cursor: pointer;
+  font-family: inherit;
+  text-transform: none;
+}
+
+button.log-reference-chip:hover {
+  border-color: rgba(44, 199, 170, 0.62);
+  background: rgba(44, 199, 170, 0.17);
+  color: #b8f5e9;
+}
+
+.log-cell-empty {
+  color: #7f96ad;
 }
 
 th {
@@ -808,6 +881,10 @@ td input[type="checkbox"] {
   max-height: calc(100vh - 150px);
   border-radius: 8px;
   background: #08111c;
+}
+
+.preview-content audio {
+  width: min(560px, 100%);
 }
 
 .preview-actions {

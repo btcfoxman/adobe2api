@@ -14,6 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from core.adobe_client import AuthError, QuotaExhaustedError, UpstreamTemporaryError
+from core.request_logging import set_request_log_params
 from core.s3_uploader import S3UploadError, S3Uploader
 
 
@@ -142,6 +143,15 @@ def build_seedance_router(
                 image_urls=image_urls,
                 video_urls=video_urls,
                 audio_urls=audio_urls,
+            )
+            set_request_log_params(
+                request,
+                media_type="video",
+                ratio=ratio,
+                resolution=resolution,
+                duration=duration,
+                mode=mode,
+                reference_count=len(image_urls) + len(video_urls) + len(audio_urls),
             )
         except ValueError as exc:
             return _json(

@@ -74,6 +74,7 @@ class RequestLogRecord:
     preview_kind: Optional[str] = None
     model: Optional[str] = None
     prompt_preview: Optional[str] = None
+    request_params: Optional[dict] = None
     error: Optional[str] = None
     error_code: Optional[str] = None
     task_status: Optional[str] = None
@@ -222,9 +223,18 @@ class RequestLogStore:
 
                     preview_kind = str(item.get("preview_kind") or "").strip().lower()
                     if 200 <= status_code < 300:
-                        if preview_kind == "image":
+                        request_params = item.get("request_params")
+                        media_type = (
+                            str(request_params.get("media_type") or "")
+                            .strip()
+                            .lower()
+                            if isinstance(request_params, dict)
+                            else ""
+                        )
+                        generated_kind = preview_kind or media_type
+                        if generated_kind == "image":
                             generated_images += 1
-                        elif preview_kind == "video":
+                        elif generated_kind == "video":
                             generated_videos += 1
 
         return {

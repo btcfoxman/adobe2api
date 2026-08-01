@@ -41,6 +41,10 @@ from core.adobe_client import (
 from core.token_mgr import token_manager
 from core.config_mgr import config_manager
 from core.refresh_mgr import refresh_manager
+from core.request_logging import (
+    extract_logging_fields as _extract_logging_fields,
+    request_operation,
+)
 from core.stores import (
     ErrorDetailRecord,
     ErrorDetailStore,
@@ -145,36 +149,6 @@ client = AdobeClient()
 refresh_manager.start()
 
 
-def _extract_logging_fields(raw_body: bytes) -> dict[str, Optional[str]]:
-    if not raw_body:
-        return {"model": None, "prompt_preview": None}
-    try:
-        import json
-
-        data: Any = json.loads(raw_body.decode("utf-8"))
-        if not isinstance(data, dict):
-            return {"model": None, "prompt_preview": None}
-
-        model = str(data.get("model") or "").strip() or None
-        prompt = str(data.get("prompt") or "").strip()
-        entity_name = str(data.get("name") or data.get("displayName") or "").strip()
-        if entity_name:
-            entity_type = str(data.get("type") or data.get("entityType") or "object").strip()
-            description = str(data.get("description") or "").strip()
-            prompt = f"entity: {entity_name}"
-            if description:
-                prompt = f"{prompt} - {description}"
-            model = f"entity:{entity_type or 'object'}"
-        if not prompt:
-            prompt = _extract_prompt_from_messages(data.get("messages") or [])
-        if prompt:
-            prompt = prompt.replace("\r", " ").replace("\n", " ").strip()
-            prompt = prompt[:180]
-        return {"model": model, "prompt_preview": prompt or None}
-    except Exception:
-        return {"model": None, "prompt_preview": None}
-
-
 def _upsert_live_request(request: Request, patch: dict) -> None:
     try:
         log_id = str(getattr(request.state, "log_id", "") or "").strip()
@@ -228,14 +202,9 @@ def _set_request_error_detail(
         if trace_text and trace_text.strip() == "NoneType: None":
             trace_text = None
 
-    op_map = {
-        "/v1/chat/completions": "chat.completions",
-        "/v1/images/generations": "images.generations",
-        "/v1/responses": "responses.create",
-        "/api/v1/generate": "api.generate",
-    }
     path = str(getattr(getattr(request, "url", None), "path", "") or "")
-    operation = op_map.get(path, "")
+    method = str(getattr(request, "method", "") or "").upper()
+    operation = request_operation(method, path)
 
     record = ErrorDetailRecord(
         code=code,
@@ -329,6 +298,9 @@ def _set_request_task_progress(
                 "error_code": getattr(request.state, "log_error_code", None),
                 "model": getattr(request.state, "log_model", None),
                 "prompt_preview": getattr(request.state, "log_prompt_preview", None),
+                "request_params": getattr(
+                    request.state, "log_request_params", None
+                ),
                 "ts": time.time(),
             },
         )
@@ -407,6 +379,7 @@ def _append_attempt_log(
                 preview_kind=preview_kind,
                 model=model,
                 prompt_preview=prompt_preview,
+                request_params=getattr(request.state, "log_request_params", None),
                 error=(str(error)[:240] if error else None),
                 error_code=(str(error_code or "") or None),
                 task_status=task_status,
@@ -442,33 +415,24 @@ async def request_logger(request: Request, call_next):
     preview_url = None
     preview_kind = None
     raw_body = b""
-    body_meta = {"model": None, "prompt_preview": None}
+    body_meta = {"model": None, "prompt_preview": None, "request_params": {}}
     error_text = None
     status_code = 500
 
-    op_map = {
-        "/v1/chat/completions": "chat.completions",
-        "/v1/images/generations": "images.generations",
-        "/v1/responses": "responses.create",
-        "/v1/entities": "entities.create" if method == "POST" else "",
-    }
-    operation = op_map.get(path, "")
+    operation = request_operation(method, path)
     should_log = bool(operation)
 
     if method in {"POST", "PUT", "PATCH"} and should_log:
         try:
             raw_body = await request.body()
             request._body = raw_body
-            if path in {
-                "/v1/images/generations",
-                "/v1/chat/completions",
-                "/v1/responses",
-                "/v1/entities",
-                "/api/v1/generate",
-            }:
-                body_meta = _extract_logging_fields(raw_body)
-                request.state.log_model = body_meta.get("model")
-                request.state.log_prompt_preview = body_meta.get("prompt_preview")
+            body_meta = _extract_logging_fields(
+                raw_body,
+                str(request.headers.get("content-type") or ""),
+            )
+            request.state.log_model = body_meta.get("model")
+            request.state.log_prompt_preview = body_meta.get("prompt_preview")
+            request.state.log_request_params = body_meta.get("request_params") or {}
             request.state.log_id = uuid.uuid4().hex[:12]
             log_id = str(getattr(request.state, "log_id", "") or "")
             if log_id:
@@ -484,6 +448,7 @@ async def request_logger(request: Request, call_next):
                         "operation": operation,
                         "model": body_meta.get("model"),
                         "prompt_preview": body_meta.get("prompt_preview"),
+                        "request_params": body_meta.get("request_params") or {},
                         "task_status": "IN_PROGRESS",
                         "task_progress": 0.0,
                     },
@@ -577,6 +542,11 @@ async def request_logger(request: Request, call_next):
                             preview_kind=preview_kind,
                             model=body_meta.get("model"),
                             prompt_preview=body_meta.get("prompt_preview"),
+                            request_params=getattr(
+                                request.state,
+                                "log_request_params",
+                                body_meta.get("request_params") or {},
+                            ),
                             error=error_final,
                             error_code=error_code,
                             task_status=task_status,

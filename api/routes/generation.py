@@ -14,6 +14,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from api.schemas import GenerateRequest
 from core.entity_store import entity_store
+from core.request_logging import set_request_log_params
 
 
 def build_generation_router(
@@ -250,6 +251,15 @@ def build_generation_router(
         )
         model_conf = resolve_model(resolved_model_id)
         response_model_id = str(model_id or "").strip() or resolved_model_id
+        set_request_log_params(
+            request,
+            media_type="image",
+            size=data.get("size"),
+            ratio=ratio,
+            resolution=output_resolution,
+            quality=data.get("quality"),
+            n=data.get("n") or 1,
+        )
 
         try:
             set_request_task_progress(
@@ -600,6 +610,14 @@ def build_generation_router(
             )
             model_conf = resolve_model(resolved_model_id)
 
+        set_request_log_params(
+            request,
+            media_type="image",
+            ratio=ratio,
+            resolution=output_resolution,
+            n=1,
+        )
+
         job = store.create(prompt=prompt, aspect_ratio=ratio)
 
         def runner(job_id: str):
@@ -770,6 +788,18 @@ def build_generation_router(
             resolve_model(resolved_model_id) if not is_video_model else {}
         )
         response_model_id = model_id or resolved_model_id
+        set_request_log_params(
+            request,
+            media_type="video" if is_video_model else "image",
+            size=data.get("size"),
+            ratio=ratio,
+            resolution=video_resolution if is_video_model else output_resolution,
+            duration=duration if is_video_model else None,
+            quality=data.get("quality"),
+            generate_audio=generate_audio if is_video_model else None,
+            reference_mode=video_reference_mode if is_video_model else None,
+            n=data.get("n") or 1,
+        )
 
         try:
             entity_account_id = ""
