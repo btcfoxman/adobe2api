@@ -16,7 +16,7 @@ English README: `README_EN.md`
 当前设计：
 
 - 对外统一入口：`/v1/chat/completions`（图像 + 视频）
-- 可选图像专用接口：`/v1/images/generations`
+- 可选图像专用接口：`/v1/images/generations`、`/v1/images/edits`
 - 持久化异步图片接口：`POST /v1/responses` + `GET /v1/responses/{response_id}`
 - Token 池管理（手动 Token + 自动刷新 Token）
 - 管理后台 Web UI：Token / 配置 / 日志 / 刷新配置导入
@@ -127,7 +127,7 @@ GPT Image 图像模型（实验接入）：
 
 LiteLLM / 标准图片模型映射：
 
-- 同步 `/v1/images/generations` 与异步 `/v1/responses` 均接受 `gpt-image-2`、`nano-banana-2`、`nano-banana-pro`，以及带 `-1k` / `-2k` / `-4k` 后缀的标准模型名。
+- 同步 `/v1/images/generations`、`/v1/images/edits` 与异步 `/v1/responses` 均接受 `gpt-image-2`、`nano-banana-2`、`nano-banana-pro`，以及带 `-1k` / `-2k` / `-4k` 后缀的标准模型名。
 - `model`、`size`、`ratio` / `aspect_ratio`、`resolution` 由调用方原样传入 adobe2api；实际 Firefly 模型只在 adobe2api 内部解析。
 - 显式 `resolution` 优先于 `size` 推断，二者都未提供时才使用模型名的分辨率后缀；基础模型默认使用 `2k` 和 `1:1`。
 - Responses 返回调用方传入的标准模型名，持久化任务内部保存解析后的 Firefly 模型名。
@@ -372,6 +372,22 @@ curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
   -d '{
     "model": "firefly-nano-banana-pro-4k-16x9",
     "prompt": "futuristic city skyline at dusk"
+  }'
+```
+
+同步图生图使用 `/v1/images/edits`，支持 JSON 图片 URL/Data URL，也支持 OpenAI 风格 multipart 文件：
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/images/edits" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "改成9:16",
+    "image": ["https://example.com/input.png"],
+    "ratio": "9:16",
+    "n": 1,
+    "response_format": "url"
   }'
 ```
 

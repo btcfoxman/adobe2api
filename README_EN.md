@@ -18,7 +18,7 @@ Chinese README: `README.md`
 Current design:
 
 - External unified entry: `/v1/chat/completions` (image + video)
-- Optional image-only endpoint: `/v1/images/generations`
+- Optional image-only endpoints: `/v1/images/generations`, `/v1/images/edits`
 - Persistent async image API: `POST /v1/responses` + `GET /v1/responses/{response_id}`
 - Token pool management (manual token + auto-refresh token)
 - Admin web UI: token/config/logs/refresh profile import
@@ -130,7 +130,7 @@ GPT Image models (experimental):
 
 LiteLLM / canonical image model mapping:
 
-- Both synchronous `/v1/images/generations` and asynchronous `/v1/responses` accept `gpt-image-2`, `nano-banana-2`, `nano-banana-pro`, plus canonical names ending in `-1k`, `-2k`, or `-4k`.
+- Synchronous `/v1/images/generations`, `/v1/images/edits`, and asynchronous `/v1/responses` accept `gpt-image-2`, `nano-banana-2`, `nano-banana-pro`, plus canonical names ending in `-1k`, `-2k`, or `-4k`.
 - The caller's `model`, `size`, `ratio` / `aspect_ratio`, and `resolution` reach adobe2api unchanged; the concrete Firefly model is resolved only inside adobe2api.
 - Explicit `resolution` takes priority over an inferred `size`; the model-name resolution suffix is only a hint when neither is supplied. Base models default to `2k` and `1:1`.
 - Responses return the caller's canonical model name while the persistent task stores the resolved Firefly model internally.
@@ -355,6 +355,22 @@ curl -X POST "http://127.0.0.1:6001/v1/images/generations" \
   -d '{
     "model": "firefly-nano-banana-pro-4k-16x9",
     "prompt": "futuristic city skyline at dusk"
+  }'
+```
+
+Use `/v1/images/edits` for synchronous image-to-image generation. It accepts JSON image URLs/Data URLs and OpenAI-style multipart files:
+
+```bash
+curl -X POST "http://127.0.0.1:6001/v1/images/edits" \
+  -H "Authorization: Bearer <service_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "change to 9:16",
+    "image": ["https://example.com/input.png"],
+    "ratio": "9:16",
+    "n": 1,
+    "response_format": "url"
   }'
 ```
 

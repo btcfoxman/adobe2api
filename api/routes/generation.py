@@ -9,6 +9,8 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from api.schemas import GenerateRequest
 from core.entity_store import entity_store
@@ -210,9 +212,15 @@ def build_generation_router(
             )
         return {"object": "list", "data": data}
 
-    @router.post("/v1/images/generations")
-    def openai_generate(data: dict, request: Request):
+    def _execute_openai_image(
+        data: dict,
+        request: Request,
+        input_images: list[tuple[bytes, str]] | None = None,
+        operation_name: str = "images.generations",
+        route_path: str = "/v1/images/generations",
+    ):
         require_service_api_key(request)
+        input_images = list(input_images or [])
 
         prompt = data.get("prompt", "").strip()
         if not prompt:
@@ -249,6 +257,11 @@ def build_generation_router(
             )
 
             def _run_once(token: str):
+                source_image_ids = [
+                    client.upload_image(token, image_bytes, image_mime or "image/jpeg")
+                    for image_bytes, image_mime in input_images
+                ]
+
                 def _image_progress_cb(update: dict):
                     set_request_task_progress(
                         request,
@@ -285,6 +298,7 @@ def build_generation_router(
                         else None
                     ),
                     detail_level=model_conf.get("detail_level"),
+                    source_image_ids=source_image_ids,
                     timeout=client.generate_timeout,
                     out_path=out_path,
                     progress_cb=_image_progress_cb,
@@ -303,7 +317,7 @@ def build_generation_router(
 
             return run_with_token_retries(
                 request=request,
-                operation_name="images.generations",
+                operation_name=operation_name,
                 run_once=_run_once,
             )
 
@@ -417,7 +431,8 @@ def build_generation_router(
                 include_traceback=True,
             )
             logger.exception(
-                "Unhandled error in /v1/images/generations log_id=%s model=%s",
+                "Unhandled error in %s log_id=%s model=%s",
+                route_path,
                 getattr(request.state, "log_id", ""),
                 resolved_model_id,
             )
@@ -434,6 +449,129 @@ def build_generation_router(
                     }
                 },
             )
+
+    def _image_urls_from_edit_payload(data: dict) -> list[str]:
+        urls: list[str] = []
+
+        def add(value: Any) -> None:
+            if isinstance(value, str):
+                item = value.strip()
+                if item and item not in urls:
+                    urls.append(item)
+                return
+            if isinstance(value, list):
+                for item in value:
+                    add(item)
+                return
+            if not isinstance(value, dict):
+                return
+            nested = value.get("image_url")
+            if isinstance(nested, dict):
+                nested = nested.get("url") or nested.get("image_url")
+            add(nested or value.get("url") or value.get("src"))
+
+        for key in ("image", "images", "image_url", "image_urls"):
+            add(data.get(key))
+        return urls
+
+    async def _parse_openai_image_edit_request(
+        request: Request,
+    ) -> tuple[dict, list[tuple[bytes, str]]]:
+        content_type = str(request.headers.get("content-type") or "").lower()
+        uploaded_images: list[tuple[bytes, str]] = []
+
+        if content_type.startswith("application/json"):
+            raw = await request.json()
+            if not isinstance(raw, dict):
+                raise HTTPException(status_code=400, detail="request body must be an object")
+            data = dict(raw)
+        else:
+            form = await request.form()
+            data = {}
+            image_urls: list[str] = []
+            for key, value in form.multi_items():
+                normalized_key = str(key).rstrip("[]")
+                if isinstance(value, StarletteUploadFile):
+                    if normalized_key != "image":
+                        continue
+                    image_bytes = await value.read()
+                    if not image_bytes:
+                        raise HTTPException(status_code=400, detail="image is empty")
+                    if len(image_bytes) > 10 * 1024 * 1024:
+                        raise HTTPException(status_code=400, detail="image too large, max 10MB")
+                    image_mime = str(value.content_type or "image/jpeg").split(";", 1)[0]
+                    if image_mime == "image/jpg":
+                        image_mime = "image/jpeg"
+                    if image_mime not in {"image/jpeg", "image/png", "image/webp"}:
+                        image_mime = "image/jpeg"
+                    uploaded_images.append((image_bytes, image_mime))
+                    continue
+                text = str(value or "").strip()
+                if normalized_key in {"image", "images", "image_url", "image_urls"}:
+                    if text:
+                        image_urls.append(text)
+                elif normalized_key and normalized_key not in data:
+                    data[normalized_key] = text
+            if image_urls:
+                data["image"] = image_urls
+
+        try:
+            n = int(data.get("n") or 1)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="n must be an integer")
+        if n != 1:
+            raise HTTPException(status_code=400, detail="adobe2api image edits currently supports n=1")
+        data["n"] = n
+
+        image_urls = _image_urls_from_edit_payload(data)
+        remote_images: list[tuple[bytes, str]] = []
+        if image_urls:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": url}}
+                        for url in image_urls
+                    ],
+                }
+            ]
+            remote_images = await run_in_threadpool(load_input_images, messages)
+        input_images = remote_images + uploaded_images
+        if not input_images:
+            raise HTTPException(
+                status_code=422, detail="image edit requires at least one image"
+            )
+        if len(input_images) > 6:
+            raise HTTPException(status_code=400, detail="too many images, max 6")
+        return data, input_images
+
+    @router.post("/v1/images/generations")
+    def openai_generate(data: dict, request: Request):
+        return _execute_openai_image(data, request)
+
+    @router.post("/v1/images/edits")
+    async def openai_edit(request: Request):
+        require_service_api_key(request)
+        try:
+            data, input_images = await _parse_openai_image_edit_request(request)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "error": {
+                        "message": str(exc.detail),
+                        "type": "invalid_request_error",
+                    }
+                },
+            )
+        return await run_in_threadpool(
+            _execute_openai_image,
+            data,
+            request,
+            input_images,
+            "images.edits",
+            "/v1/images/edits",
+        )
 
     @router.post("/api/v1/generate")
     def create_job(data: GenerateRequest, request: Request):
